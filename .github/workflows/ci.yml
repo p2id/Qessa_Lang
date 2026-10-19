@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x86_64:
+    name: Linux x86-64 (build, test, bootstrap)
+    runs-on: ubuntu-24.04   # x86-64 runner; Qessa emits Linux x86-64 ELF
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash          # bash -eo pipefail: `tee` must not hide failures
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain info
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+          mkdir -p logs
+          { uname -a; rustc --version; cargo --version; python3 --version; } | tee logs/env.log
+
+      - name: Syscall table consistency (no Rust needed)
+        run: python3 tools/check_syscall_tables.py 2>&1 | tee logs/syscall-check.log
+
+      - name: Build (release, locked)
+        run: cargo build --release --locked 2>&1 | tee logs/build.log
+
+      - name: Test (all, locked)
+        run: cargo test --locked -- --test-threads=1 2>&1 | tee logs/test.log
+
+      - name: M1 regression tests (explicit)
+        run: |
+          cargo test --locked rust_compiler_rejects -- --nocapture 2>&1 | tee logs/m1-rust.log
+          cargo test --locked self_hosted_compiler_rejects -- --nocapture 2>&1 | tee logs/m1-selfhost.log
+
+      - name: Bootstrap (stage-1 -> stage-3)
+        run: cargo test --locked self_hosted_compiler_bootstraps -- --nocapture 2>&1 | tee logs/bootstrap.log
+
+      - name: Reproducible build check (informational)
+        continue-on-error: true
+        run: |
+          sha256sum target/release/qessac | tee logs/repro-1.txt
+          cargo clean
+          cargo build --release --locked
+          sha256sum target/release/qessac | tee logs/repro-2.txt
+          diff <(cut -d' ' -f1 logs/repro-1.txt) <(cut -d' ' -f1 logs/repro-2.txt) && echo "IDENTICAL" | tee logs/repro-result.txt
+
+      - name: Format and lint (informational for now)
+        continue-on-error: true
+        run: |
+          cargo fmt --check 2>&1 | tee logs/fmt.log; true
+          cargo clippy --locked --all-targets 2>&1 | tee logs/clippy.log; true
+          echo "fmt diff lines: $(grep -c '^Diff in' logs/fmt.log || true)" | tee logs/fmt-summary.txt
+          echo "warnings: $(grep -c '^warning' logs/clippy.log || true)" | tee -a logs/fmt-summary.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Qessa CI"
+            echo '```'
+            grep -h "^test result" logs/test.log 2>/dev/null || echo "no test result (build or test step failed)"
+            cat logs/syscall-check.log 2>/dev/null | tail -1
+            cat logs/repro-result.txt 2>/dev/null || true
+            cat logs/fmt-summary.txt 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: logs/
+          if-no-files-found: warn

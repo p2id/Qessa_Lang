@@ -1,0 +1,17 @@
+[package]
+name = "qessa"
+version = "3.0.0"
+edition = "2021"
+description = "Qessa — a multi-paradigm dynamically-typed programming language that compiles directly to x86-64 machine code"
+authors = ["Qessa Project"]
+
+[[bin]]
+name = "qessac"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[dependencies]
