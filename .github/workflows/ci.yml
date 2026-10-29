@@ -47,8 +47,7 @@ jobs:
       - name: Bootstrap (stage-1 -> stage-3)
         run: cargo test --locked self_hosted_compiler_bootstraps -- --nocapture 2>&1 | tee logs/bootstrap.log
 
-      - name: Reproducible build check (informational)
-        continue-on-error: true
+      - name: Reproducible build check
         run: |
           sha256sum target/release/qessac | tee logs/repro-1.txt
           cargo clean
