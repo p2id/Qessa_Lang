@@ -862,7 +862,7 @@ fn parser_bounds_recursive_assignments_types_and_nested_blocks() {
     );
     let pointer_type = format!(
         "fn consume(value: {}) {{ return 0 }}\nfn main() {{ return 0 }}\n",
-        "&".repeat(200) + "int"
+        "& ".repeat(200) + "int"
     );
     let nested_blocks = format!(
         "fn main() {{ {}return 0{} }}\n",
