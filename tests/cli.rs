@@ -784,3 +784,70 @@ fn self_hosted_compiler_rejects_unknown_syscalls_and_functions() {
     let ran = Command::new(&zero_exe).output().expect("run zero_const");
     assert!(ran.status.success(), "zero_const exited with {:?}", ran.status.code());
 }
+
+
+#[test]
+fn parser_rejects_excessively_nested_parentheses_with_a_diagnostic() {
+    let dir = TestDir::new();
+    let source = dir.path().join("deeply_nested.qs");
+    let executable = dir.path().join("deeply_nested");
+    let nested = format!(
+        "fn main() {{ return {}1{} }}\n",
+        "(".repeat(200),
+        ")".repeat(200)
+    );
+    fs::write(&source, nested).expect("write deeply nested source");
+
+    let output = compiler()
+        .args([
+            "compile",
+            source.to_str().expect("UTF-8 source path"),
+            "-o",
+            executable.to_str().expect("UTF-8 output path"),
+        ])
+        .output()
+        .expect("compile deeply nested source");
+    let diagnostic = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(!output.status.success());
+    assert!(
+        diagnostic.contains("maximum parser nesting depth"),
+        "expected a nesting diagnostic, got:\n{diagnostic}"
+    );
+    assert!(!executable.exists());
+}
+
+#[test]
+fn parser_rejects_excessively_nested_unary_operators_with_a_diagnostic() {
+    let dir = TestDir::new();
+    let source = dir.path().join("deeply_unary.qs");
+    let executable = dir.path().join("deeply_unary");
+    let nested = format!("fn main() {{ return {}1 }}\n", "-".repeat(200));
+    fs::write(&source, nested).expect("write deeply unary source");
+
+    let output = compiler()
+        .args([
+            "compile",
+            source.to_str().expect("UTF-8 source path"),
+            "-o",
+            executable.to_str().expect("UTF-8 output path"),
+        ])
+        .output()
+        .expect("compile deeply unary source");
+    let diagnostic = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(!output.status.success());
+    assert!(
+        diagnostic.contains("maximum parser nesting depth"),
+        "expected a nesting diagnostic, got:\n{diagnostic}"
+    );
+    assert!(!executable.exists());
+}
