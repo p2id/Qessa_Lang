@@ -4,9 +4,12 @@ use crate::ast::*;
 use crate::lexer::{Lexer, Spanned, Tok};
 use std::rc::Rc;
 
+const MAX_PARSE_DEPTH: usize = 128;
+
 pub struct Parser {
     toks: Vec<Spanned>,
     pos: usize,
+    depth: usize,
 }
 
 #[derive(Debug)]
@@ -30,12 +33,30 @@ macro_rules! pe {
 
 impl Parser {
     pub fn new(toks: Vec<Spanned>) -> Self {
-        Self { toks, pos: 0 }
+        Self { toks, pos: 0, depth: 0 }
     }
 
     pub fn from_source(src: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let toks = Lexer::new(src).lex_all()?;
         Ok(Self::new(toks))
+    }
+
+    fn with_depth<T>(
+        &mut self,
+        parse: impl FnOnce(&mut Self) -> Result<T, ParseError>,
+    ) -> Result<T, ParseError> {
+        if self.depth >= MAX_PARSE_DEPTH {
+            return Err(ParseError {
+                msg: format!("maximum parser nesting depth ({MAX_PARSE_DEPTH}) exceeded"),
+                line: self.cur().line,
+                col: self.cur().col,
+            });
+        }
+
+        self.depth += 1;
+        let result = parse(self);
+        self.depth -= 1;
+        result
     }
 
     fn cur(&self) -> &Spanned {
@@ -140,6 +161,10 @@ impl Parser {
     }
 
     fn parse_item(&mut self, _in_module: bool) -> Result<Item, ParseError> {
+        self.with_depth(|parser| parser.parse_item_inner(_in_module))
+    }
+
+    fn parse_item_inner(&mut self, _in_module: bool) -> Result<Item, ParseError> {
         let (is_pub, is_extern) = self.parse_modifiers();
         let span = self.span_here();
         match self.cur().tok.clone() {
@@ -383,6 +408,10 @@ impl Parser {
     // -----------------------------------------------------------------------
 
     fn parse_type(&mut self) -> Result<TypeAnn, ParseError> {
+        self.with_depth(|parser| parser.parse_type_inner())
+    }
+
+    fn parse_type_inner(&mut self) -> Result<TypeAnn, ParseError> {
         match self.cur().tok.clone() {
             Tok::KwTypeInt => { self.bump(); Ok(TypeAnn::Int) }
             Tok::KwTypeFloat => { self.bump(); Ok(TypeAnn::Float) }
@@ -435,6 +464,10 @@ impl Parser {
     // -----------------------------------------------------------------------
 
     fn parse_block_stmts(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        self.with_depth(|parser| parser.parse_block_stmts_inner())
+    }
+
+    fn parse_block_stmts_inner(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut out = Vec::new();
         self.skip_stmt_separators();
         while !self.at(&Tok::RBrace) && !self.at(&Tok::Eof) {
@@ -446,6 +479,10 @@ impl Parser {
     }
 
     fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.with_depth(|parser| parser.parse_stmt_inner())
+    }
+
+    fn parse_stmt_inner(&mut self) -> Result<Stmt, ParseError> {
         let span = self.span_here();
         match self.cur().tok.clone() {
             Tok::KwLet => {
@@ -545,6 +582,10 @@ impl Parser {
     }
 
     fn parse_if_chain(&mut self) -> Result<(Expr, Vec<Stmt>, Option<Vec<Stmt>>), ParseError> {
+        self.with_depth(|parser| parser.parse_if_chain_inner())
+    }
+
+    fn parse_if_chain_inner(&mut self) -> Result<(Expr, Vec<Stmt>, Option<Vec<Stmt>>), ParseError> {
         self.eat(Tok::KwIf)?;
         let cond = self.parse_expr()?;
         self.eat(Tok::LBrace)?;
@@ -567,6 +608,10 @@ impl Parser {
     }
 
     fn parse_pattern(&mut self) -> Result<MatchPat, ParseError> {
+        self.with_depth(|parser| parser.parse_pattern_inner())
+    }
+
+    fn parse_pattern_inner(&mut self) -> Result<MatchPat, ParseError> {
         match self.cur().tok.clone() {
             Tok::Ident(s) if s == "_" => { self.bump(); Ok(MatchPat::Wildcard) }
             Tok::Int(v) => { self.bump(); Ok(MatchPat::Int(v)) }
@@ -609,10 +654,18 @@ impl Parser {
     // -----------------------------------------------------------------------
 
     pub fn parse_expr(&mut self) -> Result<Expr, ParseError> {
+        self.with_depth(|parser| parser.parse_expr_inner())
+    }
+
+    fn parse_expr_inner(&mut self) -> Result<Expr, ParseError> {
         self.parse_assign()
     }
 
     fn parse_assign(&mut self) -> Result<Expr, ParseError> {
+        self.with_depth(|parser| parser.parse_assign_inner())
+    }
+
+    fn parse_assign_inner(&mut self) -> Result<Expr, ParseError> {
         let lhs = self.parse_or()?;
         let span = lhs.span();
         match self.cur().tok {
@@ -784,6 +837,10 @@ impl Parser {
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        self.with_depth(|parser| parser.parse_unary_inner())
+    }
+
+    fn parse_unary_inner(&mut self) -> Result<Expr, ParseError> {
         let span = self.span_here();
         match self.cur().tok {
             Tok::Minus => {
