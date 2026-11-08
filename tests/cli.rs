@@ -851,3 +851,60 @@ fn parser_rejects_excessively_nested_unary_operators_with_a_diagnostic() {
     );
     assert!(!executable.exists());
 }
+
+
+#[test]
+fn parser_bounds_recursive_assignments_types_and_nested_blocks() {
+    let dir = TestDir::new();
+    let assignments = format!(
+        "fn main() {{ let value = 0; {} return value }}\n",
+        "value = ".repeat(200) + "value"
+    );
+    let pointer_type = format!(
+        "fn consume(value: {}) {{ return 0 }}\nfn main() {{ return 0 }}\n",
+        "&".repeat(200) + "int"
+    );
+    let nested_blocks = format!(
+        "fn main() {{ {}return 0{} }}\n",
+        "if true { ".repeat(100),
+        " }".repeat(100)
+    );
+
+    for (name, source_text) in [
+        ("assignments", assignments),
+        ("pointer_type", pointer_type),
+        ("nested_blocks", nested_blocks),
+    ] {
+        let source = dir.path().join(format!("{name}.qs"));
+        let executable = dir.path().join(name);
+        fs::write(&source, source_text).expect("write deeply nested source");
+
+        let output = compiler()
+            .args([
+                "compile",
+                source.to_str().expect("UTF-8 source path"),
+                "-o",
+                executable.to_str().expect("UTF-8 output path"),
+            ])
+            .output()
+            .expect("compile deeply nested source");
+        let diagnostic = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        assert!(
+            !output.status.success(),
+            "{name}: compiler unexpectedly accepted excessive nesting"
+        );
+        assert!(
+            diagnostic.contains("maximum parser nesting depth"),
+            "{name}: expected a nesting diagnostic, got:\n{diagnostic}"
+        );
+        assert!(
+            !executable.exists(),
+            "{name}: compiler emitted an executable after rejecting the source"
+        );
+    }
+}
