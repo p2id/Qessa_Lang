@@ -238,8 +238,8 @@ fn self_hosted_compiler_bootstraps_through_stage_three() {
         &abi_source,
         "fn seventh(a, b, c, d, e, f, g) { return g }\n\
          fn eighth(a, b, c, d, e, f, g, h) { return g * 100 + h }\n\
-         fn main() { print_int(seventh(1, 2, 3, 4, 5, 6, 7)); print_str(\"\n\"); \
-         print_int(eighth(1, 2, 3, 4, 5, 6, 7, 8)); print_str(\"\n\"); return 0 }\n",
+         fn main() { print_int(seventh(1, 2, 3, 4, 5, 6, 7)); print_str(\"\\n\"); \
+         print_int(eighth(1, 2, 3, 4, 5, 6, 7, 8)); print_str(\"\\n\"); return 0 }\n",
     )
     .expect("write self-hosted ABI fixture");
     for (stage, executable, label) in [
@@ -282,9 +282,9 @@ fn self_hosted_compiler_bootstraps_through_stage_three() {
     fs::write(
         &argv_source,
         "fn main(argc, argv) {\n\
-             print_int(argc); print_str(\"\n\")\n\
-             if argc > 1 { print_str(__peek64(argv + 8)); print_str(\"\n\") }\n\
-             if argc > 2 { print_str(__peek64(argv + 16)); print_str(\"\n\") }\n\
+             print_int(argc); print_str(\"\\n\")\n\
+             if argc > 1 { print_str(__peek64(argv + 8)); print_str(\"\\n\") }\n\
+             if argc > 2 { print_str(__peek64(argv + 16)); print_str(\"\\n\") }\n\
              return 0\n\
          }\n",
     )
@@ -480,7 +480,7 @@ fn compile_emits_a_runnable_elf_executable() {
     let executable = dir.path().join("compiled");
     fs::write(
         &source,
-        "fn main() { syscall_write(1, \"compiled OK\n\", 12); return 0 }\n",
+        "fn main() { syscall_write(1, \"compiled OK\\n\", 12); return 0 }\n",
     )
     .expect("write source");
     let output = run(&[
@@ -500,7 +500,7 @@ fn compile_emits_a_runnable_elf_executable() {
         .output()
         .expect("run compiled ELF");
     assert!(program.status.success());
-    assert_eq!(String::from_utf8_lossy(&program.stdout), "compiled OK\n");
+    assert_eq!(String::from_utf8_lossy(&program.stdout), "compiled OK\\n");
 }
 
 #[test]
