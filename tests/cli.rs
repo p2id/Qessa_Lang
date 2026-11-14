@@ -908,3 +908,38 @@ fn parser_bounds_recursive_assignments_types_and_nested_blocks() {
         );
     }
 }
+
+
+#[test]
+fn parser_accepts_reasonably_nested_parentheses_below_the_limit() {
+    let dir = TestDir::new();
+    let source = dir.path().join("nested_but_valid.qs");
+    let executable = dir.path().join("nested_but_valid");
+    let nested = format!(
+        "fn main() {{ return {}1{} }}\\n",
+        "(".repeat(30),
+        ")".repeat(30)
+    );
+    fs::write(&source, nested).expect("write nested source");
+
+    let output = compiler()
+        .args([
+            "compile",
+            source.to_str().expect("UTF-8 source path"),
+            "-o",
+            executable.to_str().expect("UTF-8 output path"),
+        ])
+        .output()
+        .expect("compile nested source");
+    let diagnostic = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(
+        output.status.success(),
+        "compiler rejected valid nested input:\\n{diagnostic}"
+    );
+    assert!(executable.exists());
+}
