@@ -500,7 +500,7 @@ fn compile_emits_a_runnable_elf_executable() {
         .output()
         .expect("run compiled ELF");
     assert!(program.status.success());
-    assert_eq!(String::from_utf8_lossy(&program.stdout), "compiled OK\\n");
+    assert_eq!(String::from_utf8_lossy(&program.stdout), "compiled OK\n");
 }
 
 #[test]
